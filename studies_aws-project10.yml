@@ -1,0 +1,473 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS CloudFormation VPC Template
+Parameters:
+  PrivateKey:
+    Type: String
+    Default: private_key
+    Description: The key used to access the instance.
+  AMIVPN:
+    Type: String
+    Default: ami-059b950a801ab108c
+    Description: The OpenVPN AMI to use.
+  AMILAMP:
+    Type: String
+    Default: ami-0fce655f5166f9d5c
+    Description: The LAMP intranet AMI to use.
+  AMIWORD:
+    Type: String
+    Default: ami-0ca804724072ecf9d
+    Description: The AMI with debian and docker and zip
+Resources:
+  MonSuperVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: 'MainVPC'
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3a
+      CidrBlock: 10.0.0.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-private-a'
+      VpcId: !Ref MonSuperVPC
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3a
+      CidrBlock: 10.0.100.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-public-a'
+      VpcId: !Ref MonSuperVPC
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3b
+      CidrBlock: 10.0.2.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-private-b'
+      VpcId: !Ref MonSuperVPC
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3b
+      CidrBlock: 10.0.200.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-public-b'
+      VpcId: !Ref MonSuperVPC
+      
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-InternetGateway'    
+  AttachInternetGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref MonSuperVPC
+      InternetGatewayId: !Ref InternetGateway
+  NatEipA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  NatGatewayA:
+    DependsOn: AttachInternetGateway
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEipA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: MainVPC-nat-a
+  NatEipB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  NatGatewayB:
+    DependsOn: AttachInternetGateway
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEipB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: MainVPC-nat-b
+          
+  PublicRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MonSuperVPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-public-a
+  AttachPublicRouteTableA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTableA
+      SubnetId: !Ref PublicSubnetA    
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MonSuperVPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-private-a
+  AttachPrivateRouteTableA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      SubnetId: !Ref PrivateSubnetA
+  PublicRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTableA
+  PrivateRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+      RouteTableId: !Ref PrivateRouteTableA
+      
+  PublicRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MonSuperVPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-public-b
+  AttachPublicRouteTableB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTableB
+      SubnetId: !Ref PublicSubnetB    
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MonSuperVPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-private-b
+  AttachPrivateRouteTableB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      SubnetId: !Ref PrivateSubnetB
+  PublicRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTableB
+  PrivateRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayB
+      RouteTableId: !Ref PrivateRouteTableB
+      
+      
+  PrivateWebsiteEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Website EC2 security group for intranet
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/16
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref MonSuperVPC
+  
+  PublicWebsiteEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Website EC2 security group for wordpress
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 90.16.70.19/32
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref MonSuperVPC
+      
+  DatabaseEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Database EC2 Security
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 10.0.0.0/16
+      VpcId: !Ref MonSuperVPC
+      
+  OpenVPNserverSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: OpenVPN server Security Group 
+      SecurityGroupEgress: 
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 943
+          ToPort: 943
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 90.16.70.19/32
+        - IpProtocol: udp
+          FromPort: 1194
+          ToPort: 1194
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref MonSuperVPC
+      
+  ServeurOPENVPN:
+    Type: AWS::EC2::Instance
+    Properties: 
+      SubnetId: !Ref PublicSubnetA
+      PrivateIpAddress: 10.0.100.145
+      ImageId: !Ref AMIVPN
+      InstanceType: t2.micro
+      KeyName: !Ref PrivateKey
+      SecurityGroupIds:
+        - Ref : OpenVPNserverSecurityGroup   
+  PublicIPVPN:    
+    Type: AWS::EC2::EIP
+    Properties: 
+        Domain: standard
+        InstanceId: !Ref ServeurOPENVPN
+
+  ServeurIntranet:
+    Type: AWS::EC2::Instance
+    Properties: 
+      SubnetId: !Ref PrivateSubnetA
+      PrivateIpAddress: 10.0.0.235
+      ImageId: !Ref AMILAMP
+      InstanceType: t2.micro
+      KeyName: !Ref PrivateKey
+      SecurityGroupIds:
+        - Ref : PrivateWebsiteEC2SecurityGroup
+ 
+  PrivateSubnetDB:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: Private subnet for Databases
+      DBSubnetGroupName: PrivateSubnetDataB
+      SubnetIds: 
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+  ServeurBDD:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: BddWordpress10
+      DBSnapshotIdentifier: arn:aws:rds:eu-west-3:114969116430:snapshot:finalsnap
+      DBSubnetGroupName: !Ref PrivateSubnetDB
+      MultiAZ: true
+      PubliclyAccessible: false
+      VPCSecurityGroups:
+        - Ref : DatabaseEC2SecurityGroup
+      
+  LaunchTemplateWordpress:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref AMIWORD
+        InstanceType: t2.micro
+        KeyName: !Ref PrivateKey
+        NetworkInterfaces: 
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            Groups: 
+              - !Ref PublicWebsiteEC2SecurityGroup
+            DeleteOnTermination: true
+        UserData:
+           Fn::Base64: !Sub |
+             #!/bin/bash
+             sudo docker volume create data
+             cd /var/lib/docker/volumes/data/_data
+             wget https://downloads.wordpress.org/plugin/amazon-s3-and-cloudfront.2.5.3.zip
+             unzip amazon-s3-and-cloudfront.2.5.3.zip
+             sudo chown -R www-data:www-data /var/lib/docker/volumes/data/_data
+             sudo docker run --mount source=data,destination=/var/www/html/wp-content/plugins/ --name some-wordpress -p 80:80 -e WORDPRESS_DB_HOST=${ServeurBDD.Endpoint.Address}:3306 -e WORDPRESS_DB_USER=wordpressuser -e WORDPRESS_DB_PASSWORD=SingeDarty8 -e -d wordpress
+      LaunchTemplateName: SuperLaunchTemplate
+   
+  WebsiteTargetGroup: 
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref MonSuperVPC
+  
+  WebsiteScalingGroup2:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn:
+      - MonSuperVPC
+    Properties:
+      AvailabilityZones:
+        - eu-west-3a
+        - eu-west-3b
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplateWordpress
+        Version: !GetAtt LaunchTemplateWordpress.LatestVersionNumber
+      MaxSize: 4
+      MinSize: 1
+      DesiredCapacity: 1
+      TargetGroupARNs: 
+        - !Ref WebsiteTargetGroup
+
+  MyCPUPolicyUP:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: '1'
+      AutoScalingGroupName: !Ref WebsiteScalingGroup2
+  MyCPUPolicyDOWN:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: '-1'
+      AutoScalingGroupName: !Ref WebsiteScalingGroup2
+        
+  WebsiteLoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Website EC2 security group
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref MonSuperVPC
+      
+  WebsiteLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref WebsiteLoadBalancerSecurityGroup
+      Subnets: 
+        - !Ref PublicSubnetB
+        - !Ref PublicSubnetA
+      
+  WebsiteLoadBlancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      LoadBalancerArn: !Ref WebsiteLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebsiteTargetGroup
+         
+  AlarmMail:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription: 
+        - Endpoint: matias.vtk@gmail.com
+          Protocol: email
+      TopicName: Alarme-instance-web
+         
+  AlarmUpCloudWatch:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      Namespace: AWS/EC2
+      AlarmActions:
+        - !Ref MyCPUPolicyUP
+        - !Ref AlarmMail
+      AlarmDescription: Ajoute une instance si la charge cpu depasse 80%
+      MetricName: CPUUtilization
+      Statistic: Average
+      ComparisonOperator: GreaterThanThreshold
+      Period: '60'
+      DatapointsToAlarm: '5'
+      EvaluationPeriods: '6'
+      Threshold: '80'
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref WebsiteScalingGroup2
+  AlarmDOWNCloudWatch:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      Namespace: AWS/EC2
+      AlarmActions:
+        - !Ref MyCPUPolicyDOWN
+        - !Ref AlarmMail
+      AlarmDescription: Supprime une instance si la charge cpu reste en dessous de 50%
+      MetricName: CPUUtilization
+      Statistic: Average
+      ComparisonOperator: LessThanThreshold
+      Period: '60'
+      DatapointsToAlarm: '5'
+      EvaluationPeriods: '6'
+      Threshold: '50'
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref WebsiteScalingGroup2
+          
+  RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt WebsiteLoadBalancer.DNSName
+        HostedZoneId: Z3Q77PNBQS71R4
+      HostedZoneName: mvaitkevicius.online.
+      Name: word.mvaitkevicius.online.
+      Type: A
+

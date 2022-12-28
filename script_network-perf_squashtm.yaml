@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS CloudFormation dev perf
+Parameters:
+  PrivateKey:
+    Type: String
+    Default: private_key
+    Description: The key used to access the instance.
+  AMISQUASH:
+    Type: String
+    Default: ami-0cfd4XXX
+    Description: The AMI with Squash-tm 2.1.0 and Java 11 and apache2
+  AMIBDD:
+    Type: String
+    Default: aami-0cfd4XXX
+    Description: The DataBase AMI with Postgresql 9.6
+  AMIGATLING:
+    Type: String
+    Default: ami-0cfd4XXX
+    Description: The AMI with Galing, Java 11 and Git
+Resources:
+      
+  SquashEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Squash EC2 security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 83.142.151.154/32
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+      
+  PostgresEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Database EC2 Security
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 83.142.151.154/32
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          
+  GatlingEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Gatling EC2 security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 83.142.151.154/32
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8086
+          ToPort: 8086
+          CidrIp: 0.0.0.0/0
+
+  ServeurBDDPostgres:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !Ref AMIBDD
+      InstanceType: c4.8xlarge
+      KeyName: !Ref PrivateKey
+      SecurityGroupIds:
+        - Ref : PostgresEC2SecurityGroup
+  PublicIPBDD:    
+    Type: AWS::EC2::EIP
+    Properties: 
+        Domain: standard
+        InstanceId: !Ref ServeurBDDPostgres
+        
+  ServeurSquashTM:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !Ref AMISQUASH
+      InstanceType: c5.9xlarge
+      KeyName: !Ref PrivateKey
+      SecurityGroupIds:
+        - Ref : SquashEC2SecurityGroup
+      UserData:
+           Fn::Base64: !Sub |
+             #!/bin/bash
+             sudo sed -i "s/nouvelleIP/${ServeurBDDPostgres.PublicIp}/g" /opt/squash-tm/bin/startup.sh
+    DependsOn : PublicIPBDD
+  PublicIPSquashTM:    
+    Type: AWS::EC2::EIP
+    Properties: 
+        Domain: standard
+        InstanceId: !Ref ServeurSquashTM
+        
+  ServeurGatling:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !Ref AMIGATLING
+      InstanceType: c5d.4xlarge
+      KeyName: !Ref PrivateKey
+      SecurityGroupIds:
+        - Ref : GatlingEC2SecurityGroup
+      UserData:
+           Fn::Base64: !Sub |
+             #!/bin/bash
+             sudo sed -i "s/squashIP/${ServeurSquashTM.PublicIp}/g" /opt/test_scripts/*_test.sh
+    DependsOn : PublicIPSquashTM
+  PublicIPGatling:    
+    Type: AWS::EC2::EIP
+    Properties: 
+        Domain: standard
+        InstanceId: !Ref ServeurGatling
+        
+  
